@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#12252b">
+    <title>VisionGuide AI | Assistive Vision</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="{{ url_for('index') }}" aria-label="VisionGuide home">
+            <span class="brand-mark" aria-hidden="true">VG</span>
+            <span>VisionGuide <em>AI</em></span>
+        </a>
+        <div class="connection-status" role="status">
+            <span class="status-dot" id="camera-dot"></span>
+            <span id="camera-status">Connecting to camera...</span>
+        </div>
+    </header>
+
+    <main class="app-shell">
+        <section class="intro-row" aria-labelledby="page-title">
+            <div>
+                <p class="eyebrow">Assistive vision console</p>
+                <h1 id="page-title">See what matters.</h1>
+                <p class="lede">A focused second set of eyes for the space in front of you.</p>
+            </div>
+            <div class="mode-badge"><span class="pulse"></span> Hazard watch</div>
+        </section>
+
+        <section class="quick-actions" aria-label="Quick assistive actions">
+            <button class="quick-action active" id="front-scan-button" type="button" aria-pressed="true">
+                <span class="quick-action-icon" aria-hidden="true">+</span>
+                <span><strong>What is ahead?</strong><small>Scan the path in front of me</small></span>
+            </button>
+            <button class="quick-action" id="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">
+                <span class="quick-action-icon" aria-hidden="true">=</span>
+                <span><strong>Settings</strong><small>Detection, voice, and controls</small></span>
+            </button>
+        </section>
+
+        <section class="workspace" aria-label="Vision detection workspace">
+            <div class="feed-column">
+                <div class="panel-heading">
+                    <div><p class="section-kicker">Live camera</p><h2>What is ahead</h2></div>
+                    <span class="feed-label">YOLO object detection</span>
+                </div>
+                <div class="feed-frame">
+                    <img id="video-feed" data-src="{{ url_for('video_feed') }}" alt="Live camera feed with hazard detection overlays">
+                    <div class="feed-overlay" aria-hidden="true"><span>LIVE</span></div>
+                    <div class="warning-banner" id="warning-banner" role="alert" aria-live="assertive" hidden>
+                        <span class="warning-symbol" aria-hidden="true">!</span>
+                        <strong id="warning-text">WARNING</strong>
+                    </div>
+                </div>
+                <div class="feed-actions">
+                    <button class="control-button" id="pause-button" type="button" aria-pressed="false"><span aria-hidden="true">||</span> Pause feed</button>
+                    <button class="control-button" id="camera-session-button" type="button" aria-pressed="true">Stop monitoring</button>
+                    <p class="camera-note">Keep the camera pointed in the direction you are moving.</p>
+                </div>
+            </div>
+
+            <aside class="control-panel settings-panel" id="settings-panel" aria-label="Detection controls" hidden>
+                <div class="panel-heading compact"><p class="section-kicker">Control room</p><h2>Detection settings</h2></div>
+                <div class="alert-card" id="alert-card"><span class="alert-icon" aria-hidden="true">!</span><div><strong id="alert-title">Monitoring active</strong><p id="alert-copy">Fire and smoke warnings use priority alerts.</p></div></div>
+                <label class="setting-block" for="profile-select"><strong>Detection profile</strong><small>Choose what deserves priority.</small><select class="select-control" id="profile-select"><option value="assistive">Assistive path mode</option><option value="all">All hazards</option><option value="sharp">Sharp objects &amp; fire</option><option value="traffic">Traffic and vehicles</option></select></label>
+                <label class="setting-row" for="confidence-slider"><span><strong>Detection confidence</strong><small>Higher values reduce false alerts.</small></span><output id="confidence-value" for="confidence-slider">45%</output></label>
+                <input id="confidence-slider" type="range" min="25" max="80" value="45">
+                <div class="toggle-row"><span><strong>Voice alerts</strong><small>Read warnings aloud when supported.</small></span><label class="switch"><input id="voice-toggle" type="checkbox" checked><span class="slider" aria-hidden="true"></span></label></div>
+                <button class="control-button full-button" id="voice-session-button" type="button" aria-pressed="true">Stop voice alerts</button>
+                <button class="test-button" id="test-voice" type="button">Test voice alert</button>
+                <button class="primary-button" id="locate-button" type="button">Use my location</button>
+                <button class="control-button full-button" id="location-session-button" type="button" aria-pressed="false">Start live location</button>
+                <button class="share-button" id="share-location" type="button">Share my location</button>
+                <div class="detected-list"><div class="list-heading"><span>Tracked hazards</span><span id="hazard-count">0</span></div><p id="hazard-list">Waiting for the camera detector...</p><p class="priority-note">Priority alerts: fire, smoke, and weapons.</p></div>
+            </aside>
+        </section>
+
+        <section class="assistive-grid" aria-label="Navigation and spoken guidance">
+            <div class="guidance-panel">
+                <div class="panel-heading"><div><p class="section-kicker">Spoken path guide</p><h2 id="guidance-title">Ready to guide</h2></div><span class="feed-label">Camera + GPS</span></div>
+                <p class="guidance-message" id="guidance-message">Enable voice alerts, then keep the camera pointed where you are walking.</p>
+                <div class="guidance-actions"><button class="primary-button" id="start-guidance" type="button">Start walking guidance</button><a class="control-button map-link" id="maps-link" href="https://www.google.com/maps" target="_blank" rel="noopener">Open Google Maps</a></div>
+            </div>
+            <div class="map-panel">
+                <div class="panel-heading"><div><p class="section-kicker">Navigation</p><h2>Where am I?</h2></div><span class="feed-label" id="location-status">Location off</span></div>
+                <div id="map" class="map-canvas" role="application" aria-label="Live map showing your location"><p>Use my location to load the live map.</p></div>
+            </div>
+        </section>
+
+        <footer class="safety-note"><strong>Important:</strong> VisionGuide is an assistive prototype, not a replacement for a cane, guide, caregiver, or situational awareness.</footer>
+    </main>
+
+    <script>
+        const feed = document.getElementById("video-feed");
+        const pauseButton = document.getElementById("pause-button");
+        const confidenceSlider = document.getElementById("confidence-slider");
+        const confidenceValue = document.getElementById("confidence-value");
+        const cameraStatus = document.getElementById("camera-status");
+        const cameraDot = document.getElementById("camera-dot");
+        const warningBanner = document.getElementById("warning-banner");
+        const warningText = document.getElementById("warning-text");
+        const alertCard = document.getElementById("alert-card");
+        const alertTitle = document.getElementById("alert-title");
+        const alertCopy = document.getElementById("alert-copy");
+        const hazardCount = document.getElementById("hazard-count");
+        const hazardList = document.getElementById("hazard-list");
+        const voiceToggle = document.getElementById("voice-toggle");
+        const profileSelect = document.getElementById("profile-select");
+        const testVoice = document.getElementById("test-voice");
+        const guidanceTitle = document.getElementById("guidance-title");
+        const guidanceMessage = document.getElementById("guidance-message");
+        const locateButton = document.getElementById("locate-button");
+        const startGuidance = document.getElementById("start-guidance");
+        const mapsLink = document.getElementById("maps-link");
+        const locationStatus = document.getElementById("location-status");
+        const mapElement = document.getElementById("map");
+        const shareLocation = document.getElementById("share-location");
+        const cameraSessionButton = document.getElementById("camera-session-button");
+        const voiceSessionButton = document.getElementById("voice-session-button");
+        const locationSessionButton = document.getElementById("location-session-button");
+        const frontScanButton = document.getElementById("front-scan-button");
+        const settingsButton = document.getElementById("settings-button");
+        const settingsPanel = document.getElementById("settings-panel");
+        let paused = false;
+        let guidanceEnabled = false;
+        let map;
+        let locationMarker;
+        let locationWatch;
+        let latestLocation;
+        let monitoringEnabled = true;
+        let voiceEnabled = true;
+
+        frontScanButton.addEventListener("click", () => {
+            frontScanButton.classList.add("active");
+            frontScanButton.setAttribute("aria-pressed", "true");
+            announce("Scanning the area ahead. Keep the camera pointed forward.");
+            guidanceMessage.textContent = "Scanning the path in front of you...";
+            if (paused) pauseButton.click();
+            if (!monitoringEnabled) cameraSessionButton.click();
+        });
+
+        settingsButton.addEventListener("click", () => {
+            const isOpen = !settingsPanel.hidden;
+            settingsPanel.hidden = isOpen;
+            settingsButton.setAttribute("aria-expanded", String(!isOpen));
+            settingsButton.querySelector("strong").textContent = isOpen ? "Settings" : "Close settings";
+        });
+        let lastAnnouncement = "";
+        let lastAnnouncementAt = 0;
+
+        window.requestAnimationFrame(() => {
+            feed.src = feed.dataset.src;
+        });
+
+        confidenceSlider.addEventListener("input", () => {
+            confidenceValue.value = `${confidenceSlider.value}%`;
+            confidenceValue.textContent = `${confidenceSlider.value}%`;
+            saveSettings();
+        });
+
+        profileSelect.addEventListener("change", saveSettings);
+
+        pauseButton.addEventListener("click", () => {
+            paused = !paused;
+            pauseButton.setAttribute("aria-pressed", paused);
+            pauseButton.innerHTML = paused ? "<span aria-hidden=\"true\">▶</span> Resume feed" : "<span aria-hidden=\"true\">||</span> Pause feed";
+            if (paused) {
+                feed.dataset.resumeSrc = feed.src;
+                feed.src = "";
+            } else {
+                feed.src = feed.dataset.resumeSrc || feed.dataset.src;
+            }
+        });
+
+        cameraSessionButton.addEventListener("click", () => {
+            monitoringEnabled = !monitoringEnabled;
+            cameraSessionButton.textContent = monitoringEnabled ? "Stop monitoring" : "Start monitoring";
+            cameraSessionButton.setAttribute("aria-pressed", monitoringEnabled);
+            if (monitoringEnabled) feed.src = feed.dataset.resumeSrc || feed.dataset.src;
+            else { feed.dataset.resumeSrc = feed.src; feed.src = ""; }
+            cameraStatus.textContent = monitoringEnabled ? "Camera online" : "Monitoring stopped";
+        });
+
+        voiceSessionButton.addEventListener("click", () => {
+            voiceEnabled = !voiceEnabled;
+            voiceToggle.checked = voiceEnabled;
+            voiceSessionButton.textContent = voiceEnabled ? "Stop voice alerts" : "Start voice alerts";
+            voiceSessionButton.setAttribute("aria-pressed", voiceEnabled);
+            if (!voiceEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+        });
+
+        feed.addEventListener("load", () => { cameraStatus.textContent = "Camera online"; cameraDot.classList.add("online"); });
+        feed.addEventListener("error", () => { cameraStatus.textContent = "Camera unavailable"; cameraDot.classList.remove("online"); });
+
+        function announce(message) {
+            if (!voiceEnabled || !voiceToggle.checked || !window.speechSynthesis || message === lastAnnouncement && Date.now() - lastAnnouncementAt < 5000) return;
+            window.speechSynthesis.cancel();
+            const speech = new SpeechSynthesisUtterance(message);
+            speech.rate = 0.95;
+            speech.volume = 1;
+            window.speechSynthesis.speak(speech);
+            lastAnnouncement = message;
+            lastAnnouncementAt = Date.now();
+        }
+
+        function saveSettings() {
+            fetch("{{ url_for('update_settings') }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    confidence: Number(confidenceSlider.value) / 100,
+                    profile: profileSelect.value
+                })
+            }).catch(() => { hazardList.textContent = "Could not save settings"; });
+        }
+
+        testVoice.addEventListener("click", () => announce("VisionGuide voice alerts are working."));
+
+        function updateLocation(position) {
+            const { latitude, longitude } = position.coords;
+            latestLocation = { latitude, longitude };
+            locationStatus.textContent = "Location ready";
+            mapsLink.href = `https://www.google.com/maps/@${latitude},${longitude},17z`;
+            if (map) {
+                const point = [latitude, longitude];
+                map.setView(point, Math.max(map.getZoom(), 17));
+                if (!locationMarker) locationMarker = L.marker(point).addTo(map).bindPopup("Your live location").openPopup();
+                else locationMarker.setLatLng(point);
+            }
+        }
+
+        function locateUser() {
+            if (!navigator.geolocation) { locationStatus.textContent = "GPS unavailable"; return; }
+            locationStatus.textContent = "Finding you...";
+            if (locationWatch) navigator.geolocation.clearWatch(locationWatch);
+            locationWatch = navigator.geolocation.watchPosition(updateLocation, () => { locationStatus.textContent = "Location blocked"; }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+            locationSessionButton.textContent = "Stop live location";
+            locationSessionButton.setAttribute("aria-pressed", "true");
+        }
+
+        locateButton.addEventListener("click", locateUser);
+        locationSessionButton.addEventListener("click", () => {
+            if (locationWatch) {
+                navigator.geolocation.clearWatch(locationWatch);
+                locationWatch = null;
+                locationSessionButton.textContent = "Start live location";
+                locationSessionButton.setAttribute("aria-pressed", "false");
+                locationStatus.textContent = "Location stopped";
+            } else {
+                locateUser();
+                locationSessionButton.textContent = "Stop live location";
+                locationSessionButton.setAttribute("aria-pressed", "true");
+            }
+        });
+        shareLocation.addEventListener("click", async () => {
+            if (!latestLocation) {
+                announce("Location is not ready yet. Press use my location first.");
+                locationStatus.textContent = "Find location first";
+                return;
+            }
+            const locationUrl = `https://www.google.com/maps/search/?api=1&query=${latestLocation.latitude},${latestLocation.longitude}`;
+            const shareData = { title: "My live location", text: "My current location", url: locationUrl };
+            try {
+                if (navigator.share) await navigator.share(shareData);
+                else await navigator.clipboard.writeText(locationUrl);
+                shareLocation.textContent = navigator.share ? "Location shared" : "Location link copied";
+                setTimeout(() => { shareLocation.textContent = "Share my location"; }, 2500);
+            } catch (error) {
+                if (error.name !== "AbortError") locationStatus.textContent = "Sharing unavailable";
+            }
+        });
+        startGuidance.addEventListener("click", () => {
+            guidanceEnabled = !guidanceEnabled;
+            startGuidance.textContent = guidanceEnabled ? "Stop walking guidance" : "Start walking guidance";
+            if (guidanceEnabled) { announce("Walking guidance started. Keep the camera pointed ahead."); guidanceMessage.textContent = "Listening for hazards and path changes..."; }
+        });
+
+        async function refreshDetections() {
+            try {
+                const response = await fetch("{{ url_for('detections') }}", { cache: "no-store" });
+                const data = await response.json();
+                const hazards = data.hazards || [];
+                const names = hazards.map((item) => item.name).join(", ");
+                const urgent = data.urgent || hazards.some((item) => ["fire", "smoke", "gun"].includes(item.name));
+                hazardCount.textContent = hazards.length;
+                hazardList.textContent = hazards.length ? names : "No configured hazards detected";
+                warningBanner.hidden = !hazards.length;
+                warningBanner.classList.toggle("urgent", urgent);
+                alertCard.classList.toggle("danger", hazards.length > 0);
+                alertCard.classList.toggle("urgent", urgent);
+                alertTitle.textContent = urgent ? "URGENT danger detected" : hazards.length ? "Danger detected" : "Monitoring active";
+                alertCopy.textContent = hazards.length ? `${urgent ? "Urgent warning" : "Possible hazard"}: ${names}.` : "Fire and smoke warnings use priority alerts.";
+                guidanceTitle.textContent = data.guidance || "Path appears clear";
+                guidanceMessage.textContent = data.guidance || "Path appears clear.";
+                if (hazards.length) announce(`${urgent ? "Urgent warning" : "Warning"}. ${data.guidance || `Possible ${names} detected.`}`);
+                else if (guidanceEnabled) announce("Path appears clear.");
+            } catch (error) {
+                hazardList.textContent = "Detection service unavailable";
+            }
+        }
+
+        async function refreshStatus() {
+            try {
+                const response = await fetch("{{ url_for('status') }}");
+                const data = await response.json();
+                cameraStatus.textContent = data.camera ? "Camera online" : "Camera unavailable";
+                cameraDot.classList.toggle("online", data.camera);
+            } catch (error) {
+                cameraStatus.textContent = "App unavailable";
+                cameraDot.classList.remove("online");
+            }
+        }
+        refreshStatus();
+        refreshDetections();
+        setInterval(refreshStatus, 5000);
+        setInterval(refreshDetections, 1000);
+    </script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        function initLiveMap() {
+            map = L.map(mapElement).setView([20, 0], 2);
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+            mapElement.querySelector("p")?.remove();
+            locateUser();
+        }
+        if (window.L) initLiveMap();
+        else mapElement.innerHTML = "<p>Map library unavailable. Use Google Maps for live navigation.</p>";
+    </script>
+</body>
+</html>
